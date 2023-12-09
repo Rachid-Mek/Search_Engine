@@ -25,7 +25,7 @@ class UI(ctk.CTk):
         self.label = ctk.CTkLabel(master=self.frame, text="Termes:", font=("Roboto", 20))
         self.label.grid(row=0, column=0, pady=10, padx=20, sticky="e")
 
-        self.entry = ctk.CTkEntry(master=self.frame, placeholder_text="Search for a term", font=("Roboto", 16), width=200)
+        self.entry = ctk.CTkEntry(master=self.frame, placeholder_text="Search for a term", font=("Roboto", 16), width=400)
         self.entry.grid(row=0, column=1, pady=10, padx=20, sticky="w")
 
         # Create checkbuttons for processing options
@@ -56,6 +56,9 @@ class UI(ctk.CTk):
 
         self.probabilistic_model = ctk.CTkRadioButton(master=self.frame, text="Probabilistic", variable=self.var_index, value="Probabilistic",width=150)
         self.probabilistic_model.grid(row=2, column=4, pady=10, padx=20, sticky="w")
+
+        # self.probabilistic_model = ctk.CTkRadioButton(master=self.frame, text="Bool model", variable=self.var_index, value="Bool" , width=150)
+        # self.probabilistic_model.grid(row=2, column=5, pady=10, padx=20, sticky="w")
 
         # create two input fields one for K and the other for B
         self.k_label = ctk.CTkLabel(master=self.frame, text="K:", font=("Roboto", 20))
@@ -187,6 +190,9 @@ class UI(ctk.CTk):
                 k = float(self.k_entry.get())
                 b = float(self.b_entry.get())
                 results = self.search_engine.BM25(term, b, k)
+
+            elif self.var_index.get() == 'Bool':
+                results = self.search_engine.Bool_model(term)
 
         self.update_columns()
 
