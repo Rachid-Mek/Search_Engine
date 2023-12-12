@@ -2,6 +2,7 @@ import os
 import re
 import math
 import nltk
+from nltk.stem import PorterStemmer , LancasterStemmer
 import pandas as pd
 
 class SearchEngine:
@@ -175,102 +176,89 @@ class SearchEngine:
 
         return sorted_dict
 
-    def is_valid_query(self, query):
-        '''cette fonction va verifier si la requete est valide ou pas'''
-        pattern = r"^(not\s+)?\w+(\s+(and|or)\s+(not\s+)?\w+)*$"
-        return bool(re.match(pattern, query, re.IGNORECASE))
+    def infix_to_postfix(self,expression):
+        operators = {'NOT': 3, 'AND': 2, 'OR': 1}
+        output = []
+        stack = []
 
-    #def Bool_model(self, query):
-        if not self.is_valid_query(query):
-            return 'Not a valid query'
+        def apply_operator(operator):
+            while stack and operators.get(stack[-1], 0) >= operators[operator]:
+                output.append(stack.pop())
+            stack.append(operator)
 
-        # Initialize the result dictionary with zeros
-        result_dict = {i + 1: 0 for i in range(len(os.listdir('Collection')))}
+        for token in expression.split():
+            if token in operators:
+                apply_operator(token)
+            else:
+                output.append(token)
 
-        query = query.lower()
-        tokens = [nltk.PorterStemmer().stem(token) for token in query.split()]
+        while stack:
+            output.append(stack.pop())
 
-        # Read data from CSV file
-        df = pd.read_csv('output/DescripteursPorterToken.txt', sep=" ")
-        # Group by the first index of the column because we don't have a name for it
-        df_grouped = df.groupby(df.columns[0])[df.columns[1]].apply(list).reset_index(name='term')
-        # Rename the first column to 'doc_id'
-        df_grouped.rename(columns={df_grouped.columns[0]: 'doc_id'}, inplace=True)
+        return ' '.join(output)
 
-        not_tokens = set()
-        for i, token in enumerate(tokens):
-            if token == 'not':
-                not_tokens.add(tokens[i + 1])
+    def get_bool_value(self, term,doc,inverse_dict,stemmer):
+        term=stemmer.stem(term)
+        #print(term)
+        v=inverse_dict.get((term,doc),0)
+        if v==0:
+            return False
+        else:
+            return True
+    
+    def evaluate_postfix_expression(self, expression, doc,inverse,stemmer):
+        stack = []
 
-        # Check if each document satisfies the query
-        for i, doc_terms in enumerate(df_grouped['term']):
-            # Use 'or' to return 1 if at least one token is present in the document
-            # Use 'and' to return 1 if all tokens are present in the document
-            if ('or' in tokens and any((token in doc_terms) for token in tokens)) or \
-            ('and' in tokens and all((token in doc_terms) for token in tokens)):
-                result_dict[i + 1] = 1
-            else: # check the individual tokens
-                if tokens[0] == 'not':
-                    if tokens[1] in doc_terms:
-                        result_dict[i + 1] = 0
-                    else:
-                        result_dict[i + 1] = 1
-                else:
-                    if tokens[0] in doc_terms:
-                        result_dict[i + 1] = 1
-                    else:
-                        result_dict[i + 1] = 0
+        def apply_operator(operator):
+            if operator == 'NOT':
+                operand = stack.pop()
+                result = not bool(operand)
+            else:
+                operand2 = stack.pop()
+                operand1 = stack.pop()
+                if operator == 'AND':
+                    result = bool(operand1) and bool(operand2)
+                elif operator == 'OR':
+                    result = bool(operand1) or bool(operand2)
 
-        # return the result dictionary as a list not sorted
-        return result_dict.items()
-            
-    def Bool_model(self, query):
-        if not self.is_valid_query(query):
-            return 'Not a valid query'
+            stack.append(result)
 
-        # Initialize the result dictionary with zeros
-        result_dict = {i + 1: 0 for i in range(len(os.listdir('Collection')))}
+        for token in expression.split():
+            if token  not in {'NOT', 'AND', 'OR'}:
+                stack.append(self.get_bool_value(token,doc,inverse,stemmer))
+            elif token in {'NOT', 'AND', 'OR'}:
+                apply_operator(token)
+            else:
+                stack.append(bool(token))
 
-        query = query.lower()
-        tokens = [nltk.PorterStemmer().stem(token) for token in query.split()]
+        return stack[0]
+    
+    def search_bool(self,term,stemmer):
 
-        # Read data from CSV file
-        df = pd.read_csv('output/DescripteursPorterToken.txt', sep=" ")
-        # Group by the first index of the column because we don't have a name for it
-        df_grouped = df.groupby(df.columns[0])[df.columns[1]].apply(list).reset_index(name='term')
-        # Rename the first column to 'doc_id'
-        df_grouped.rename(columns={df_grouped.columns[0]: 'doc_id'}, inplace=True)
+        if stemmer=="porter":
+            stemmer = PorterStemmer()
+        else:
+            stemmer = LancasterStemmer()
 
-        # using postfix stack to evaluate the query and save the result in result_dict
-        postfix_stack = []
+        df=self.dataframe(inverse="Inverse")
+        result_dict={}
+        for idx,row in df.iterrows():
+            result_dict[(row["term"],row["doc_id"])]=row['frequency']
 
-        def evaluate_expression(operand1, operator, operand2):
-            if operator == 'and':
-                return operand1 and operand2
-            elif operator == 'or':
-                return operand1 or operand2
+        final_dict={}
+        for i in range(6):
+            postfix=self.infix_to_postfix(term)
+            val=self.evaluate_postfix_expression(postfix,i+1,result_dict,stemmer)
 
-        for token in tokens:
-            if token not in {'and', 'or', 'not'}:
-                # Check if the token is a valid document ID
-                if token in result_dict:
-                    postfix_stack.append(result_dict[token])
-                else:
-                    print(f"Invalid document ID: {token}")
-                    return
+            if val :
+                final_dict[i+1]= 1
+            else:
+                final_dict[i+1]= 0
 
-            elif token == 'not':
-                operand = postfix_stack.pop()
-                postfix_stack.append(not operand)
-            else:  # 'and' or 'or'
-                operand2 = postfix_stack.pop()
-                operand1 = postfix_stack.pop()
-                result = evaluate_expression(operand1, token, operand2)
-                postfix_stack.append(result)
-
-        # return the result dictionary as a list sorted
-        sorted_dict = sorted(result_dict.items(), key=lambda x: x[1], reverse=True)
+        sorted_dict = list(final_dict.items())
         return sorted_dict
+
+
 
     def RSV(self, query, modele,k,b):
         word = self.process_query(query, 'Porter', False)
@@ -307,14 +295,14 @@ class SearchEngine:
         elif(modele == 'Probabilistic'):
             sorted_dict = self.BM25(query, k, b)
         
-        elif(modele == 'bool'):
-            sorted_dict = self.Bool_model(query)
+        elif(modele == 'Bool'):
+            sorted_dict = self.search_bool(query, 'porter')
         
         # saving the result in a dataframe
         result_df = pd.DataFrame(sorted_dict, columns=['doc_id', 'Relevance'])
         return result_df
 
-    def process_query(self , query,method,split=False):
+    def process_query(self , query, method, split=False):
         
         tokens = self.regex_tokenizer(query) if not split else self.split_tokenizer(query)
         tokens = self.stop_remove(tokens)
@@ -340,10 +328,10 @@ class SearchEngine:
         df.columns = ['term', 'doc_id', 'frequency', 'weight'] if inverse == 'Inverse' else ['doc_id', 'term', 'frequency', 'weight']
         return df
 
+
+    
 # Example usage:
 if __name__ == '__main__':
     search_engine = SearchEngine()
-    query = '1'
-    resutls = search_engine.dataframe(inverse= 'Descripteurs')
-    # displaying the query results in a dataframe where term = query
-    print(resutls[resutls['doc_id'] == int(query)])
+    df1=search_engine.RSV('Documents AND NOT ranking OR queries OR GPT-3.5','Bool',0.2,0.1)
+    print(df1)

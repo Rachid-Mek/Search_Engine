@@ -25,13 +25,9 @@ def search(search_term, tokenization, lancaceter, display_option, pertinence ,Ve
             results = results[results['term'] == term]
 
         if pertinence:
-            print(f"Using RSV for pertinence: {Vector_space_model},{K},{B}")
             results = search_engine.RSV(term, Vector_space_model, K, B)
-            print(f"RSV Results:\n{results}")
-        elif results.empty:
-            print(f"Using regular search for pertinence")
-            results = search_engine.search_term(term, method, split, collection)
-            print(f"Regular Search Results:\n{results}")
+            print(results)
+
     else:
         results = 'Please enter a query'
     
