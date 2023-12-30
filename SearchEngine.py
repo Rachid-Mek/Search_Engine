@@ -1,9 +1,12 @@
 import os
 import re
 import math
+import tempfile
+import mpld3
 import nltk
 from nltk.stem import PorterStemmer , LancasterStemmer
 import pandas as pd
+import matplotlib.pyplot as plt
 
 class SearchEngine:
 
@@ -55,16 +58,6 @@ class SearchEngine:
 
         results_df = pd.DataFrame(results, columns=['term', 'doc_id', 'frequency', 'weight']) if inverse else pd.DataFrame(results, columns=['doc_id', 'term', 'frequency', 'weight'])
         return results_df
-
-    def search_term(self,query, lancaster, tokenize, inverse):
-        query = self.process_query(query, lancaster, tokenize)
-        results = []
-        # Getting the data from all files that contain the term
-        results = self.dataframe(tokenize ,lancaster, inverse)
-        #query is a list of terms
-        for term in query:
-            results = results[results['term'] == term]
-        return results
 
     def Normalizer(self, input_file, method, split =False):
         with open(input_file, 'r', encoding='utf-8') as f:
@@ -167,13 +160,6 @@ class SearchEngine:
 
         result_dict = {i + 1: BM25_scores[i] for i in range(len(BM25_scores)) if BM25_scores[i] != 0}
         sorted_dict = sorted(result_dict.items(), key=lambda x: x[1], reverse=True)
-        print(words)
-        print(f'dl :{dl}')
-        print(f'avdl : {avdl}')
-        print(f'term frequency : {term_freq}')
-        print(f'ni : {ni}')
-        print(f'BM25 : {sorted_dict}')
-
         return sorted_dict
 
     def infix_to_postfix(self,expression):
@@ -199,7 +185,7 @@ class SearchEngine:
 
     def get_bool_value(self, term,doc,inverse_dict,stemmer):
         term=stemmer.stem(term)
-        #print(term)
+
         v=inverse_dict.get((term,doc),0)
         if v==0:
             return False
@@ -251,17 +237,17 @@ class SearchEngine:
             val=self.evaluate_postfix_expression(postfix,i+1,result_dict,stemmer)
 
             if val :
-                final_dict[i+1]= 1
+                final_dict[i+1]= 'Yes'
             else:
-                final_dict[i+1]= 0
+                final_dict[i+1]= 'no'
 
         sorted_dict = list(final_dict.items())
+        # filtring the result
+        sorted_dict = [x for x in sorted_dict if x[1] == 'Yes']
         return sorted_dict
 
-
-
     def RSV(self, query, modele,k,b):
-        word = self.process_query(query, 'Porter', False)
+        word = self.process_query(query, False, False)
         q , v , vect = [0.0]*len(os.listdir('Collection')) , [0.0]*len(os.listdir('Collection')) , [0.0]*len(os.listdir('Collection'))
         with open('output/DescripteursPorterToken.txt', 'r', encoding='utf-8') as f:
             for line in f:
@@ -306,7 +292,7 @@ class SearchEngine:
         
         tokens = self.regex_tokenizer(query) if not split else self.split_tokenizer(query)
         tokens = self.stop_remove(tokens)
-        tokens = self.porter_stem(tokens) if method == "Porter" else self.lancester_stem(tokens)
+        tokens = self.porter_stem(tokens) if not method else self.lancester_stem(tokens)
     
         return tokens
     
@@ -328,10 +314,150 @@ class SearchEngine:
         df.columns = ['term', 'doc_id', 'frequency', 'weight'] if inverse == 'Inverse' else ['doc_id', 'term', 'frequency', 'weight']
         return df
 
+    def pertitant_query(self, query, method, split = False):
+        """pertinant query
+        
+        query : the searched sentence
+        tokenize : regex or split
+        stemming : port for porter else lancester
+        
+        Returns:
+            data frame on inverse or decsriptor file from output folder
+        """  
+        tokens = self.regex_tokenizer(query) if not split else self.split_tokenizer(query)
+        tokens = self.stop_remove(tokens)
+        tokens = self.porter_stem(tokens) if method == "Porter" else self.lancester_stem(tokens)
+        return tokens
 
+    def get_query(self, query_num):
+        """Get the query from the Queries.txt file. 
+            exemple if query_num = 1 then return the first query which is in the first line of the file
+        """
+        with open('output/Queries.txt', 'r', encoding='utf-8') as f:
+            for i, line in enumerate(f):
+                if i == int(query_num) - 1:
+                    return line.strip()
+   
+    # --------------------------------- metrics --------------------------------- #
+    def calculate_metrics(self, query_num, results):
+        """Calculate precision, recall, f-measure, precision@5, and precision@10 for a given query."""
+        df_jugement = pd.read_csv('output/Judgement.txt', sep="\t", names=['query_num', 'doc_id'])
+        df_jugement = df_jugement[df_jugement['query_num'] == query_num]
+        df_jugement = df_jugement['doc_id'].tolist()
+        df_results = results['doc_id'].tolist()
+
+        # Calculate the number of pertinent documents
+        pertinant = len(set(df_jugement).intersection(df_results))
+
+        # Calculate metrics
+        precision = pertinant / len(df_results)
+        recall = pertinant / len(df_jugement)
+        f_measure = 2 * precision * recall / (precision + recall)
+        doc_pertinent = list(set(df_jugement).intersection(df_results))
+        doc_pertinent_5 = len(set(df_results[:5]).intersection(doc_pertinent))
+        doc_pertinent_10 = len(set(df_results[:10]).intersection(doc_pertinent))
+
+        precision_5 = doc_pertinent_5 / 5 
+        precision_10 = doc_pertinent_10 / 10 
+
+        # Create a DataFrame with the metrics
+        metrics_df = pd.DataFrame({
+            'ID': [query_num],
+            'Precision': [precision],
+            'Recall': [recall],
+            'F_Measure': [round(f_measure, 4)],
+            'Precision@5': [precision_5],
+            'Precision@10': [precision_10]
+        })
+
+        return metrics_df
+
+    def get_recal_prec_per_doc(self, query_num, results):
+
+        df_jugement = pd.read_csv('output/Judgement.txt', sep="\t", names=['query_num', 'doc_id'])
+        df_jugement = df_jugement[df_jugement['query_num'] == query_num]
+        df_jugement = df_jugement['doc_id'].tolist()
+        df_results = results['doc_id'].tolist()
+        print(df_results)
+        doc_pertinent = list(set(df_jugement).intersection(df_results))
+        print(doc_pertinent)
+
+        precisions = []
+        recalls = []
+        pertinant = 0
+        for i in range(1, 11):
+            if i <= len(df_results) and df_results[i-1] in doc_pertinent:
+                pertinant = pertinant + 1
+                precisions.append(round((pertinant / i), 4))
+                recalls.append(round((pertinant / len(df_jugement)), 4))
+            else:
+                precisions.append(round((pertinant / i), 4))
+                recalls.append(round((pertinant / len(df_jugement)), 4))
+
+        return precisions, recalls
     
+    def interpolate(self, query_num, results):
+        precisions, recalls = self.get_recal_prec_per_doc(query_num, results)
+        print(f'precisons :{precisions}')
+        print(f'recalls :{recalls}')
+        interpolated_precisions = []
+        recall = [i/10 for i in range(11)]
+        i = 0
+        j = 0
+        while i < len(precisions):
+            while j < len(recall):
+                if recalls[i] >= recall[j]:
+                    
+                    j += 1
+                    # return the max precision
+                    interpolated_precisions.append(max(precisions[i:]))
+                else:
+                    i += 1
+                    break
+
+            if j == len(recall) or i == len(recalls):
+                if (len(interpolated_precisions) != 11):
+                    x = len(interpolated_precisions)
+                    for i in range(x, 11):
+                        interpolated_precisions.append(0)
+                break
+
+        return interpolated_precisions, recall
+    
+    def plot(self, query_num, results):
+        interpollated, rec = self.interpolate(query_num, results)
+        print(f'length of interpolated : {interpollated}')
+        print(f'recall : {rec}')
+        # Create Matplotlib figure
+        fig, ax = plt.subplots()
+        ax.plot(rec, interpollated, 'o-', color='red', label='Interpolated Precision')
+        ax.set_xlabel('Recall')
+        ax.set_ylabel('Precision')
+        ax.set_title('Precision-Recall curve')
+        ax.legend()
+
+
+        # Specify a different temporary directory
+        temp_dir = "temp"
+        os.makedirs(temp_dir, exist_ok=True)
+
+        # Save the plot to a temporary file
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False, dir=temp_dir) as temp_file:
+            plt.savefig(temp_file.name, format='png')
+            temp_file_path = temp_file.name
+
+        # Close the Matplotlib figure
+        plt.close(fig)
+
+        return temp_file_path
+
+         
+
 # Example usage:
 if __name__ == '__main__':
+    query_num = 1 
+    results = pd.DataFrame({'doc_id': [2, 5, 3, 6, 4]})
     search_engine = SearchEngine()
-    df1=search_engine.RSV('Documents AND NOT ranking OR queries OR GPT-3.5','Bool',0.2,0.1)
-    print(df1)
+
+    term = search_engine.plot(query_num, results)
+    print(term)
