@@ -1,12 +1,21 @@
 import os
-import re
 import math
 import tempfile
-import mpld3
+from prerocessing import create_document_dictionary, read_documents
 import nltk
 from nltk.stem import PorterStemmer , LancasterStemmer
 import pandas as pd
 import matplotlib.pyplot as plt
+
+document_dict = create_document_dictionary(read_documents("concatenated.txt"))
+nbr_docs = len(document_dict.keys())
+
+
+get_ni = dict()
+with open('output_lisa/get_ni.txt', 'r') as f:
+    for line in f:
+        key, value = line.split()
+        get_ni[key] = int(value)        
 
 class SearchEngine:
 
@@ -36,7 +45,7 @@ class SearchEngine:
             doc_term_count = {}  # Dictionary to count the number of documents containing each term
             term_frequency = self.Normalizer(file_path, method, split_option)
             max_freq = max(term_frequency.values())
-            N = len(os.listdir('Collection'))
+            N = nbr_docs
 
             for term, frequency in term_frequency.items():
                 term_results = []  # List to store results for the current term
@@ -59,108 +68,34 @@ class SearchEngine:
         results_df = pd.DataFrame(results, columns=['term', 'doc_id', 'frequency', 'weight']) if inverse else pd.DataFrame(results, columns=['doc_id', 'term', 'frequency', 'weight'])
         return results_df
 
-    def Normalizer(self, input_file, method, split =False):
-        with open(input_file, 'r', encoding='utf-8') as f:
-            text = f.read()
-        if split:
-            Termes = text.split()
-        else:
-            # Tokenization
-            ExpReg = nltk.RegexpTokenizer('(?:[A-Za-z]\.)+|[A-Za-z]+[\-@]\d+(?:\.\d+)?|\d+[A-Za-z]+|\d+(?:[\.\,]\d+)?%?|\w+(?:[\-/]\w+)*')
-            Termes = ExpReg.tokenize(text)
-        MotsVides = nltk.corpus.stopwords.words('english')
-        TermesSansMotsVides = [terme for terme in Termes if terme.lower() not in MotsVides]
-        if method == 'Porter':
-            Porter = nltk.PorterStemmer()
-            TermesNormalisation = [Porter.stem(terme) for terme in TermesSansMotsVides]
-        elif method == 'Lancaster':
-            Lancaster = nltk.LancasterStemmer()
-            TermesNormalisation = [Lancaster.stem(terme) for terme in TermesSansMotsVides]
-
-        TermesFrequency = {}
-
-        for terme in TermesNormalisation:
-            if (terme in TermesFrequency.keys()):
-                TermesFrequency[terme] += 1
-            else:
-                TermesFrequency[terme] = 1
-
-        return TermesFrequency
-
     def calculate_weight(self, N, ni, freq, max_freq):
         return ((freq / max_freq) * math.log10((N / ni) + 1))
 
-    def create_files(self, collection_directory, output_directory, output_prefix):
-        methods = ['Porter', 'Lancaster']
-        split_options = [False, True]
-        
-        for method in methods:
-            for split_option in split_options:
-                term_doc_mapping = {}  # Dictionary to store term to document mapping
-                doc_term_count = {}  # Dictionary to count the number of documents containing each term
+    def BM25(self, query,K=2, B=0.5):
+            dl, term_freq, ni = [0.0] * 6004, [[0.0] * 6004 for _ in range(len(query))], [0.0] * len(query)
+            NUMBER_OF_DOC = 5999
+            with open('output_lisa/DescripteursPorterToken.txt','r',encoding='utf-8') as f:
+                next(f)
+                for line in f :
+                    doc_id , term , frequency , weight = line.split()
+                    dl[int(doc_id) - 1] += int(frequency)
+                    for i , word in enumerate(query) :
+                        if term == word :
+                            term_freq[i][int(doc_id) - 1] += int(frequency)
+                            # check if the term is in the doc increment the ni
+                            ni[i] = get_ni[word] if word in get_ni else 0
 
-                for doc_id, filename in enumerate(os.listdir(collection_directory), start=1):
-                    input_file = os.path.join(collection_directory, filename)
-                    term_frequency = self.Normalizer(input_file, method, split_option)
-                    max_freq = max(term_frequency.values())
-                    N = len(os.listdir(collection_directory))
-                    
-                    for term, frequency in term_frequency.items():
-                        if term not in doc_term_count:
-                            doc_term_count[term] = 1  # Initialize count for the current term
-                        else:
-                            doc_term_count[term] += 1  # Increment the count for the current document
+            avdl = (sum(dl) / NUMBER_OF_DOC)
+            BM25_scores = [0.0] * 6004
+            for i in range(6004):
+                somme = 0.0 
+                for j in range(len(query)):
+                    somme += (term_freq[j][i]/(K * ((1- B) + B * (dl[i]/avdl)) + term_freq[j][i]) * (math.log10((NUMBER_OF_DOC - ni[j] + 0.5)/(ni[j] + 0.5))))
+                BM25_scores[i] = somme
 
-                        ni = [term in self.Normalizer(os.path.join('Collection', file_name), method, split_option) for file_name in os.listdir('Collection')].count(True)
-                        weight = self.calculate_weight(N, ni, frequency, max_freq)
-
-                        if output_prefix == "Descripteurs":
-                            doc_term_key = f"{doc_id} {term}"
-                        else:
-                            doc_term_key = f"{term} {doc_id}"
-
-                        term_doc_mapping[doc_term_key] = (frequency, weight)
-
-                output_filename = f"{output_prefix}{method}{'Split' if split_option else 'Token'}.txt"
-                output_file = os.path.join(output_directory, output_filename)
-
-                with open(output_file, 'w', encoding='utf-8') as f:
-                    # Sort the items (key and (frequency, weight)) and iterate over them
-                    sorted_items = sorted(
-                        term_doc_mapping.items(), key=lambda item: item[0]
-                    )
-                    for key, (frequency, weight) in sorted_items:
-                        if output_prefix == "Descripteurs":
-                            doc_id, term = key.split()
-                            f.write(f"{doc_id} {term} {frequency} {weight}\n")
-                        else:
-                            term, doc_id = key.split()
-                            f.write(f"{term} {doc_id} {frequency} {weight}\n")
-
-    def BM25(self, query,K=2, B=1.5):
-        words = self.process_query(query, 'Porter', False)
-        dl, term_freq, ni = [0.0] * len(os.listdir('Collection')), [[0.0] * len(os.listdir('Collection')) for _ in range(len(words))], [0.0] * len(words)
-        NUMBER_OF_DOC = len(os.listdir('Collection'))
-        with open('output/DescripteursPorterToken.txt','r',encoding='utf-8') as f:
-            for line in f :
-                doc_id , term , frequency , weight = line.split()
-                dl[int(doc_id) - 1] += int(frequency)
-                for i , word in enumerate(words) :
-                    if term == word :
-                        term_freq[i][int(doc_id) - 1] += int(frequency)
-                        ni[i] = sum(1 for file_name in os.listdir('Collection') if word in self.Normalizer(os.path.join('Collection', file_name), 'Porter', False))
-
-        avdl = (sum(dl) / NUMBER_OF_DOC)
-        BM25_scores = [0.0] * len(os.listdir('Collection'))
-        for i in range(NUMBER_OF_DOC):
-            somme = 0.0 
-            for j in range(len(words)):
-                somme += (term_freq[j][i]/(K * ((1- B) + B * (dl[i]/avdl)) + term_freq[j][i]) * (math.log10((NUMBER_OF_DOC - ni[j] + 0.5)/(ni[j] + 0.5))))
-            BM25_scores[i] = somme
-
-        result_dict = {i + 1: BM25_scores[i] for i in range(len(BM25_scores)) if BM25_scores[i] != 0}
-        sorted_dict = sorted(result_dict.items(), key=lambda x: x[1], reverse=True)
-        return sorted_dict
+            result_dict = {i + 1: BM25_scores[i] for i in range(len(BM25_scores)) if BM25_scores[i] != 0}
+            sorted_dict = sorted(result_dict.items(), key=lambda x: x[1], reverse=True)
+            return sorted_dict
 
     def infix_to_postfix(self,expression):
         operators = {'NOT': 3, 'AND': 2, 'OR': 1}
@@ -247,13 +182,14 @@ class SearchEngine:
         return sorted_dict
 
     def RSV(self, query, modele,k,b):
-        word = self.process_query(query, False, False)
-        q , v , vect = [0.0]*len(os.listdir('Collection')) , [0.0]*len(os.listdir('Collection')) , [0.0]*len(os.listdir('Collection'))
-        with open('output/DescripteursPorterToken.txt', 'r', encoding='utf-8') as f:
+        
+        q , v , vect = [0.0]*6004 , [0.0]*6004 , [0.0]*6004
+        with open('output_lisa/DescripteursPorterToken.txt', 'r', encoding='utf-8') as f:
+            next(f)
             for line in f:
                 doc_id, term, frequency, weight = line.split()
                 q[int(doc_id)-1] += float(weight) ** 2  # q
-                if term in word:
+                if term in query:
                     vect[int(doc_id)-1] += float(weight)  # scalar product vector
                     v[int(doc_id)-1] += 1  # v
 
@@ -261,12 +197,15 @@ class SearchEngine:
             norm_query = [math.sqrt(q[i]) for i in range(len(q))]  # calculating the sqrt for each element in q
             norm_doc = [math.sqrt(v[i]) for i in range(len(v))]  # calculating the sqrt for each element in v
             # calculating the cosine similarity with a check for zero division
-            cos = [vect[i] / (norm_query[i] * norm_doc[i]) if norm_query[i] != 0 and norm_doc[i] != 0 else 0 for i in range(len(vect))]
+            cos = [vect[i] / (norm_query[i] * norm_doc[i]) if (norm_query[i] != 0 and norm_doc[i] != 0) else 0 for i in range(len(vect))]
+            #round cos[i] to 4 digits
+            cos = [round(cos[i], 4) for i in range(len(cos))]
             result_dict = {i + 1: cos[i] for i in range(len(cos)) if cos[i] != 0}
             sorted_dict = sorted(result_dict.items(), key=lambda x: x[1], reverse=True)
 
-        elif(modele == 'Indice de Jaccard'):
-            jac =[vect[i] / ((q[i] + v[i]) - vect[i]) for i in range (len(vect))]
+        elif modele == 'Indice de Jaccard':
+            jac = [vect[i] / ((q[i] + v[i]) - vect[i]) if ((q[i] + v[i]) - vect[i]) != 0 else 0 for i in range(len(vect))]
+            jac = [round(jac[i], 4) for i in range(len(jac))]
             result_dict = {i + 1: jac[i] for i in range(len(jac)) if jac[i] != 0}
             sorted_dict = sorted(result_dict.items(), key=lambda x: x[1], reverse=True)
 
@@ -308,50 +247,77 @@ class SearchEngine:
             data frame on inverse or decsriptor file from output folder
         """  
         file_name = f"{inverse}{'Lancaster' if lancaseter else 'Porter'}{'Token' if tokenize else 'Split'}.txt"
-        file_path = os.path.join('output', file_name)
+        file_path = os.path.join('output_lisa', file_name)
         df = pd.read_csv(file_path, sep=" ")
         # naming the columns
         df.columns = ['term', 'doc_id', 'frequency', 'weight'] if inverse == 'Inverse' else ['doc_id', 'term', 'frequency', 'weight']
         return df
 
-    def pertitant_query(self, query, method, split = False):
-        """pertinant query
-        
-        query : the searched sentence
-        tokenize : regex or split
-        stemming : port for porter else lancester
-        
-        Returns:
-            data frame on inverse or decsriptor file from output folder
-        """  
-        tokens = self.regex_tokenizer(query) if not split else self.split_tokenizer(query)
-        tokens = self.stop_remove(tokens)
-        tokens = self.porter_stem(tokens) if method == "Porter" else self.lancester_stem(tokens)
-        return tokens
 
     def get_query(self, query_num):
         """Get the query from the Queries.txt file. 
-            exemple if query_num = 1 then return the first query which is in the first line of the file
         """
-        with open('output/Queries.txt', 'r', encoding='utf-8') as f:
-            for i, line in enumerate(f):
-                if i == int(query_num) - 1:
-                    return line.strip()
+        with open('output_lisa/Queries.txt', 'r') as file:
+            lines = file.readlines()
+
+        query_info = dict()
+        current_query = None
+
+        for line in lines:
+            if line.split()[0].isdigit() and len(line.split()) == 1:
+                current_query = int(line.split()[0])
+                query_info[current_query] = []
+            else:
+                query_info[current_query].append(line.split('#')[0].rstrip())
+
+        for key, value in query_info.items():
+            query_info[key] = ' '.join(value)
+
+        return query_info[query_num]
    
+    def extract_query_information(self, file_path):
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+
+        query_info = {'query_num': [], 'relevant': [], 'docs': []}
+        current_query = None
+        relevant_refs_line = False
+        docs = False
+
+        for line in lines:
+            if line.startswith('Query'):
+                current_query = int(line.split()[1])
+                relevant_refs_line = True
+            elif relevant_refs_line:
+                relevant_refs = [int(ref) for ref in line.split() if ref.isdigit()]
+                query_info['query_num'].append(current_query)
+                query_info['relevant'].append(relevant_refs[0])
+                relevant_refs_line = False
+                docs = True
+            elif docs:
+                docs = [int(doc) for doc in line.split() if doc != '-1']
+                query_info['docs'].append(docs)
+                docs = False
+
+        # Convert to dataframe
+        query_info = pd.DataFrame(query_info)
+
+        return query_info
     # --------------------------------- metrics --------------------------------- #
     def calculate_metrics(self, query_num, results):
         """Calculate precision, recall, f-measure, precision@5, and precision@10 for a given query."""
-        df_jugement = pd.read_csv('output/Judgement.txt', sep="\t", names=['query_num', 'doc_id'])
+        df_jugement = self.extract_query_information('output_lisa/Judgement.txt')
         df_jugement = df_jugement[df_jugement['query_num'] == query_num]
-        df_jugement = df_jugement['doc_id'].tolist()
+        df_jugement = df_jugement['docs'].tolist()  # Convert the 'docs' column to a list
         df_results = results['doc_id'].tolist()
+        df_jugement = [item for sublist in df_jugement for item in sublist]  
 
         # Calculate the number of pertinent documents
-        pertinant = len(set(df_jugement).intersection(df_results))
+        pertinent = len(set(df_jugement).intersection(df_results))
 
         # Calculate metrics
-        precision = pertinant / len(df_results)
-        recall = pertinant / len(df_jugement)
+        precision = pertinent / len(df_results)
+        recall = pertinent / len(df_jugement)
         f_measure = 2 * precision * recall / (precision + recall)
         doc_pertinent = list(set(df_jugement).intersection(df_results))
         doc_pertinent_5 = len(set(df_results[:5]).intersection(doc_pertinent))
@@ -372,15 +338,16 @@ class SearchEngine:
 
         return metrics_df
 
-    def get_recal_prec_per_doc(self, query_num, results):
 
-        df_jugement = pd.read_csv('output/Judgement.txt', sep="\t", names=['query_num', 'doc_id'])
+    def get_recal_prec_per_doc(self, query_num, results):
+        df_jugement = self.extract_query_information('output_lisa/Judgement.txt')
         df_jugement = df_jugement[df_jugement['query_num'] == query_num]
-        df_jugement = df_jugement['doc_id'].tolist()
+        df_jugement = df_jugement['docs'].tolist()
+        df_jugement = [item for sublist in df_jugement for item in sublist]
         df_results = results['doc_id'].tolist()
-        print(df_results)
         doc_pertinent = list(set(df_jugement).intersection(df_results))
-        print(doc_pertinent)
+        total_pertinent = len(set(df_jugement).intersection(df_results[:10]))
+
 
         precisions = []
         recalls = []
@@ -389,10 +356,10 @@ class SearchEngine:
             if i <= len(df_results) and df_results[i-1] in doc_pertinent:
                 pertinant = pertinant + 1
                 precisions.append(round((pertinant / i), 4))
-                recalls.append(round((pertinant / len(df_jugement)), 4))
+                recalls.append(round((pertinant / total_pertinent if total_pertinent != 0 else 1), 4))
             else:
                 precisions.append(round((pertinant / i), 4))
-                recalls.append(round((pertinant / len(df_jugement)), 4))
+                recalls.append(round((pertinant / total_pertinent if total_pertinent != 0 else 1), 4))
 
         return precisions, recalls
     
@@ -450,14 +417,10 @@ class SearchEngine:
         plt.close(fig)
 
         return temp_file_path
-
+    
          
-
 # Example usage:
-if __name__ == '__main__':
-    query_num = 1 
-    results = pd.DataFrame({'doc_id': [2, 5, 3, 6, 4]})
+    #testing get_query
+if __name__ == "__main__":
     search_engine = SearchEngine()
-
-    term = search_engine.plot(query_num, results)
-    print(term)
+    print(search_engine.get_query(3))
