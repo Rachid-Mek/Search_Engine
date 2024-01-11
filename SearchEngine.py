@@ -39,34 +39,6 @@ class SearchEngine:
         lancester = nltk.LancasterStemmer()
         return[lancester.stem(term) for term in tokens]
 
-    def display_all_terms(self, file_path, method, split_option , inverse = False):
-        results = []
-        if file_path:
-            doc_term_count = {}  # Dictionary to count the number of documents containing each term
-            term_frequency = self.Normalizer(file_path, method, split_option)
-            max_freq = max(term_frequency.values())
-            N = nbr_docs
-
-            for term, frequency in term_frequency.items():
-                term_results = []  # List to store results for the current term
-                for doc_id, filename in enumerate(os.listdir('Collection'), start=1):
-                    if term not in doc_term_count:
-                        doc_term_count[term] = 1  # Initialize count for the current term
-                    else:
-                        doc_term_count[term] += 1  # Increment the count for the current document
-
-                    ni = doc_term_count[term]
-                    weight = self.calculate_weight(N, ni, frequency, max_freq)
-                    if inverse:
-                        term_results.append((term, doc_id, frequency, weight))
-                    else:
-                        term_results.append((doc_id, term, frequency, weight))
-
-                # Append results for the current term to the overall results list
-                results.extend(term_results)
-
-        results_df = pd.DataFrame(results, columns=['term', 'doc_id', 'frequency', 'weight']) if inverse else pd.DataFrame(results, columns=['doc_id', 'term', 'frequency', 'weight'])
-        return results_df
 
     def calculate_weight(self, N, ni, freq, max_freq):
         return ((freq / max_freq) * math.log10((N / ni) + 1))
@@ -182,7 +154,7 @@ class SearchEngine:
         return sorted_dict
 
     def RSV(self, query, modele,k,b):
-        
+        print(f'query : {query}')  
         q , v , vect = [0.0]*6004 , [0.0]*6004 , [0.0]*6004
         with open('output_lisa/DescripteursPorterToken.txt', 'r', encoding='utf-8') as f:
             next(f)
@@ -211,6 +183,7 @@ class SearchEngine:
 
         elif(modele == 'Produit Scalaire'):
             #sorting the vec by the weight and keeping the doc_id and removing the weight = 0
+            print('scalar product')
             dict = {}
             for i in range(len(vect)):
                 if vect[i] != 0:
@@ -228,8 +201,7 @@ class SearchEngine:
         return result_df
 
     def process_query(self , query, method, split=False):
-        
-        tokens = self.regex_tokenizer(query) if not split else self.split_tokenizer(query)
+        tokens = self.regex_tokenizer(query) if split else self.split_tokenizer(query)
         tokens = self.stop_remove(tokens)
         tokens = self.porter_stem(tokens) if not method else self.lancester_stem(tokens)
     
@@ -246,7 +218,7 @@ class SearchEngine:
         Returns:
             data frame on inverse or decsriptor file from output folder
         """  
-        file_name = f"{inverse}{'Lancaster' if lancaseter else 'Porter'}{'Token' if tokenize else 'Split'}.txt"
+        file_name = f"{inverse}{'Lancester' if lancaseter else 'Porter'}{'Token' if tokenize else 'Split'}.txt"
         file_path = os.path.join('output_lisa', file_name)
         df = pd.read_csv(file_path, sep=" ")
         # naming the columns
