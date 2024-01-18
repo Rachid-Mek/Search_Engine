@@ -1,18 +1,15 @@
 import os
 import math
 import tempfile
-from prerocessing import create_document_dictionary, read_documents
 import nltk
 from nltk.stem import PorterStemmer , LancasterStemmer
 import pandas as pd
 import matplotlib.pyplot as plt
 
-document_dict = create_document_dictionary(read_documents("concatenated.txt"))
-nbr_docs = len(document_dict.keys())
-
-
+NUMBER_OF_DOC = 6004
+    
 get_ni = dict()
-with open('output_lisa/get_ni.txt', 'r') as f:
+with open('terms_per_doc/PorterToken.txt', 'r') as f:
     for line in f:
         key, value = line.split()
         get_ni[key] = int(value)        
@@ -44,8 +41,7 @@ class SearchEngine:
         return ((freq / max_freq) * math.log10((N / ni) + 1))
 
     def BM25(self, query,K=2, B=0.5):
-            dl, term_freq, ni = [0.0] * 6004, [[0.0] * 6004 for _ in range(len(query))], [0.0] * len(query)
-            NUMBER_OF_DOC = 5999
+            dl, term_freq, ni = [0.0] * NUMBER_OF_DOC, [[0.0] * NUMBER_OF_DOC for _ in range(len(query))], [0.0] * len(query)
             with open('output_lisa/DescripteursPorterToken.txt','r',encoding='utf-8') as f:
                 next(f)
                 for line in f :
@@ -58,8 +54,10 @@ class SearchEngine:
                             ni[i] = get_ni[word] if word in get_ni else 0
 
             avdl = (sum(dl) / NUMBER_OF_DOC)
-            BM25_scores = [0.0] * 6004
-            for i in range(6004):
+            print(f'avdl : {avdl}')
+            print(f'ni : {ni}')
+            BM25_scores = [0.0] * NUMBER_OF_DOC
+            for i in range(NUMBER_OF_DOC):
                 somme = 0.0 
                 for j in range(len(query)):
                     somme += (term_freq[j][i]/(K * ((1- B) + B * (dl[i]/avdl)) + term_freq[j][i]) * (math.log10((NUMBER_OF_DOC - ni[j] + 0.5)/(ni[j] + 0.5))))
@@ -154,8 +152,7 @@ class SearchEngine:
         return sorted_dict
 
     def RSV(self, query, modele,k,b):
-        print(f'query : {query}')  
-        q , v , vect = [0.0]*6004 , [0.0]*6004 , [0.0]*6004
+        q , v , vect = [0.0]*NUMBER_OF_DOC , [0.0]*NUMBER_OF_DOC , [0.0]*NUMBER_OF_DOC
         with open('output_lisa/DescripteursPorterToken.txt', 'r', encoding='utf-8') as f:
             next(f)
             for line in f:
@@ -319,6 +316,7 @@ class SearchEngine:
         df_results = results['doc_id'].tolist()
         doc_pertinent = list(set(df_jugement).intersection(df_results))
         total_pertinent = len(set(df_jugement).intersection(df_results[:10]))
+        print(f'total pertinent : {doc_pertinent}')
 
 
         precisions = []
@@ -332,6 +330,9 @@ class SearchEngine:
             else:
                 precisions.append(round((pertinant / i), 4))
                 recalls.append(round((pertinant / total_pertinent if total_pertinent != 0 else 1), 4))
+
+        print(f'precisons :{precisions}')
+        print(f'recalls :{recalls}')
 
         return precisions, recalls
     

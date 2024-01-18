@@ -62,10 +62,12 @@ def search(search_term, use_query_dataset, query_id, tokenization, lancaceter, d
 dataset = extract_query_information('output_lisa/Judgement.txt')
 query_numbers = dataset['query_num']
 query_numbers = [None] + [str(x) for x in query_numbers]
-iface = gr.Interface(
+
+
+interface = gr.Interface(
     fn=search,
     inputs=[
-        gr.Textbox(label="Search Term", value="", elem_id="search"),
+        gr.Textbox(label="Search Terms", value=""),
         gr.Checkbox(label="Query Dataset", value=False),
         gr.Dropdown(label="Query", choices=query_numbers),
         gr.Checkbox(label="Tokenization", value=True),
@@ -79,6 +81,7 @@ iface = gr.Interface(
     outputs=[gr.HTML(), gr.Image()],
     allow_flagging="never",
     title="Search Engine",
-    theme=gr.themes.Soft()
-)
-iface.launch(inbrowser=True)
+    theme=gr.themes.Soft(),
+)   
+
+interface.launch(inbrowser=True)
