@@ -77,7 +77,7 @@ class SearchEngine:
                 output.append(stack.pop())
             stack.append(operator)
 
-        for token in expression.split():
+        for token in expression:
             if token in operators:
                 apply_operator(token)
             else:
