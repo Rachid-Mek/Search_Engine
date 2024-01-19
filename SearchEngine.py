@@ -152,28 +152,33 @@ class SearchEngine:
         return sorted_dict
 
     def RSV(self, query, modele,k,b):
-        q , v , vect = [0.0]*NUMBER_OF_DOC , [0.0]*NUMBER_OF_DOC , [0.0]*NUMBER_OF_DOC
+        quer = set(query)
+        q , v , vect = [0.0]*NUMBER_OF_DOC , {} , [0.0]*NUMBER_OF_DOC
         with open('output_lisa/DescripteursPorterToken.txt', 'r', encoding='utf-8') as f:
             next(f)
             for line in f:
                 doc_id, term, frequency, weight = line.split()
                 q[int(doc_id)-1] += float(weight) ** 2  # q
-                if term in query:
+                if term in quer:
                     vect[int(doc_id)-1] += float(weight)  # scalar product vector
-                    v[int(doc_id)-1] += 1  # v
+                    v[term] =1
 
+        #sum the values of v
+        v = sum(v.values()) 
+        print(len(quer))
+        print(f'v : {v}')
         if(modele == 'Cosine Measure'):
             norm_query = [math.sqrt(q[i]) for i in range(len(q))]  # calculating the sqrt for each element in q
-            norm_doc = [math.sqrt(v[i]) for i in range(len(v))]  # calculating the sqrt for each element in v
+            v =  math.sqrt(v)
             # calculating the cosine similarity with a check for zero division
-            cos = [vect[i] / (norm_query[i] * norm_doc[i]) if (norm_query[i] != 0 and norm_doc[i] != 0) else 0 for i in range(len(vect))]
+            cos = [vect[i] / (norm_query[i] * v) if (norm_query[i] != 0 and v != 0) else 0 for i in range(len(vect))]
             #round cos[i] to 4 digits
             cos = [round(cos[i], 4) for i in range(len(cos))]
             result_dict = {i + 1: cos[i] for i in range(len(cos)) if cos[i] != 0}
             sorted_dict = sorted(result_dict.items(), key=lambda x: x[1], reverse=True)
 
         elif modele == 'Indice de Jaccard':
-            jac = [vect[i] / ((q[i] + v[i]) - vect[i]) if ((q[i] + v[i]) - vect[i]) != 0 else 0 for i in range(len(vect))]
+            jac = [vect[i] / ((q[i] + v) - vect[i]) if ((q[i] + v) - vect[i]) != 0 else 0 for i in range(len(vect))]
             jac = [round(jac[i], 4) for i in range(len(jac))]
             result_dict = {i + 1: jac[i] for i in range(len(jac)) if jac[i] != 0}
             sorted_dict = sorted(result_dict.items(), key=lambda x: x[1], reverse=True)

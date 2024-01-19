@@ -18,8 +18,8 @@ def search(search_term, use_query_dataset, query_id, tokenization, lancaceter, d
 
     if term != '':
         results = search_engine.dataframe(inverse=collection, lancaseter= lancaceter, tokenize=tokenization)
-
-        if term in ['1', '2', '3', '4', '5', '6']:
+        #check if term is result id
+        if term in [str(x) for x in results['doc_id']]:
             term = int(term)  # Convert term to an integer
             results = results[results['doc_id'] == term]
         elif not pertinence:
@@ -35,7 +35,7 @@ def search(search_term, use_query_dataset, query_id, tokenization, lancaceter, d
                 query_id = int(query_id)
                 metrics_df = search_engine.calculate_metrics(query_id, results)
                 plt_file = search_engine.plot(query_id, results)    
-                table_style = 'width: 100%; max-width: 800px; height: 50%; max-height:300px; overflow: auto;'
+                table_style = 'width: 100%; max-width: 800px; height: 50%; max-height:400px; overflow: auto;'
                 return (
                     f'<div style="{table_style}">{results.reset_index().to_html(index=False)}</div>' +
                     f'<hr/>' +
