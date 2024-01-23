@@ -19,17 +19,19 @@ def search(search_term, use_query_dataset, query_id, tokenization, lancaceter, d
     if term != '':
         results = search_engine.dataframe(inverse=collection, lancaseter= lancaceter, tokenize=tokenization)
         #check if term is result id
-        if term in [str(x) for x in results['doc_id']]:
-            term = int(term)  # Convert term to an integer
-            results = results[results['doc_id'] == term]
-        elif not pertinence:
+        # if term in [str(x) for x in results['doc_id']]:
+        #     term = int(term)  # Convert term to an integer
+        #     results = results[results['doc_id'] == term]
+        #     #printing somme des frequences
+        #     print(results['frequency'].sum())
+        if not pertinence:
             term = search_engine.process_query(term, method=lancaceter, split=tokenization)
             term = term[0]
             results = results[results['term'] == term]
 
         if pertinence:
             term = search_engine.process_query(term, method=lancaceter, split=tokenization)
-            results = search_engine.RSV(term, Vector_space_model, K, B)
+            results = search_engine.RSV(term, Vector_space_model, K, B,method, tokenize,collection)
       
             if use_query_dataset:
                 query_id = int(query_id)

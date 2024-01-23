@@ -40,9 +40,9 @@ class SearchEngine:
     def calculate_weight(self, N, ni, freq, max_freq):
         return ((freq / max_freq) * math.log10((N / ni) + 1))
 
-    def BM25(self, query,K=2, B=0.5):
+    def BM25(self, query,K=2, B=0.5, method = 'Porter' , tokenize= 'Token'):
             dl, term_freq, ni = [0.0] * NUMBER_OF_DOC, [[0.0] * NUMBER_OF_DOC for _ in range(len(query))], [0.0] * len(query)
-            with open('output_lisa/DescripteursPorterToken.txt','r',encoding='utf-8') as f:
+            with open(f'output_lisa/DescripteursDescripteurs{method}{tokenize}.txt','r',encoding='utf-8') as f:
                 next(f)
                 for line in f :
                     doc_id , term , frequency , weight = line.split()
@@ -125,6 +125,7 @@ class SearchEngine:
         return stack[0]
     
     def search_bool(self,term,stemmer):
+        term = self.regex_tokenizer(term)
 
         if stemmer=="porter":
             stemmer = PorterStemmer()
@@ -151,22 +152,20 @@ class SearchEngine:
         sorted_dict = [x for x in sorted_dict if x[1] == 'Yes']
         return sorted_dict
 
-    def RSV(self, query, modele,k,b):
-        quer = set(query)
+    def RSV(self, query, modele,k,b,method , tokenize):
+        query = set(query)
         q , v , vect = [0.0]*NUMBER_OF_DOC , {} , [0.0]*NUMBER_OF_DOC
-        with open('output_lisa/DescripteursPorterToken.txt', 'r', encoding='utf-8') as f:
+        with open(f'output_lisa/Descripteurs{method}{tokenize}.txt', 'r', encoding='utf-8') as f:
             next(f)
             for line in f:
                 doc_id, term, frequency, weight = line.split()
                 q[int(doc_id)-1] += float(weight) ** 2  # q
-                if term in quer:
+                if term in query:
                     vect[int(doc_id)-1] += float(weight)  # scalar product vector
                     v[term] =1
 
         #sum the values of v
         v = sum(v.values()) 
-        print(len(quer))
-        print(f'v : {v}')
         if(modele == 'Cosine Measure'):
             norm_query = [math.sqrt(q[i]) for i in range(len(q))]  # calculating the sqrt for each element in q
             v =  math.sqrt(v)
@@ -193,7 +192,7 @@ class SearchEngine:
             sorted_dict = sorted(dict.items(), key=lambda x: x[1], reverse=True)
         
         elif(modele == 'Probabilistic'):
-            sorted_dict = self.BM25(query, k, b)
+            sorted_dict = self.BM25(query, k, b, method, tokenize)
         
         elif(modele == 'Bool'):
             sorted_dict = self.search_bool(query, 'porter')
@@ -225,6 +224,7 @@ class SearchEngine:
         df = pd.read_csv(file_path, sep=" ")
         # naming the columns
         df.columns = ['term', 'doc_id', 'frequency', 'weight'] if inverse == 'Inverse' else ['doc_id', 'term', 'frequency', 'weight']
+
         return df
 
 
